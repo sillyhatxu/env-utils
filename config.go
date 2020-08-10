@@ -3,7 +3,7 @@ package envutils
 import (
 	"bufio"
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -11,50 +11,44 @@ import (
 )
 
 const (
-	tagName  = `env`
-	localEnv = `.env`
+	tagName    = `env`
+	defaultEnv = `.env`
 )
 
 func ParseConfig(input interface{}, opts ...Option) (err error) {
-	config := &Config{}
+	config := &Config{Filenames: []string{defaultEnv}}
 	for _, opt := range opts {
 		opt(config)
 	}
-	err = loadEnv(localEnv, false)
-	if err != nil {
-		return err
-	}
-	err = loadEnv(config.FileName, true)
-	if err != nil {
-		return err
+	for _, filename := range config.Filenames {
+		err = loadEnv(filename)
+		if err != nil {
+			return err
+		}
 	}
 	return parseEnvironmentConfig(input)
 }
 
-func loadEnv(fileName string, required bool) error {
+func loadEnv(fileName string) error {
 	if fileName == "" {
-		logrus.Infof("No local file to load. [%s]", fileName)
+		log.Println("no files to load")
 		return nil
 	}
-	logrus.Infof("Load env file : %s", fileName)
 	file, err := os.Open(fileName)
-	if err != nil && required {
-		panic(err)
-	} else if err != nil && !required {
-		logrus.Infof("No local file to load. [%s]", fileName)
-		return nil
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		if scanner.Text() == "" {
+		value := scanner.Text()
+		if value == "" {
 			continue
 		}
-		array := strings.Split(scanner.Text(), "=")
-		if array == nil || len(array) != 2 {
-			return fmt.Errorf("split error. %s", scanner.Text())
+		if !strings.Contains(value, "=") {
+			return fmt.Errorf("missing the necessary characters '='")
 		}
-		err := os.Setenv(array[0], array[1])
+		err := os.Setenv(value[0:strings.Index(value, "=")], value[strings.Index(value, "=")+1:])
 		if err != nil {
 			return err
 		}
@@ -80,7 +74,6 @@ func parseEnvironmentConfig(obj interface{}) error {
 			continue
 		}
 		envValue := os.Getenv(tag)
-		logrus.Debugf("tag : %s; value : %s", tag, envValue)
 		fieldValue := reflect.ValueOf(obj).Elem()
 		switch field.Type.Kind() {
 		case reflect.String:
@@ -88,49 +81,49 @@ func parseEnvironmentConfig(obj interface{}) error {
 		case reflect.Int:
 			i, err := strconv.Atoi(envValue)
 			if err != nil {
-				return fmt.Errorf("strconv.Atoi(%s) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetInt(int64(i))
 		case reflect.Int64:
 			i, err := strconv.ParseInt(envValue, 10, 64)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetInt(i)
 		case reflect.Int32:
 			i, err := strconv.ParseInt(envValue, 10, 32)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetInt(i)
 		case reflect.Int16:
 			i, err := strconv.ParseInt(envValue, 10, 16)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetInt(i)
 		case reflect.Int8:
 			i, err := strconv.ParseInt(envValue, 10, 8)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetInt(i)
 		case reflect.Bool:
 			b, err := strconv.ParseBool(envValue)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetBool(b)
 		case reflect.Float64:
 			f, err := strconv.ParseFloat(envValue, 64)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetFloat(f)
 		case reflect.Float32:
 			f, err := strconv.ParseFloat(envValue, 32)
 			if err != nil {
-				return fmt.Errorf("strconv.ParseInt(%v, 10, 64) error. %v", envValue, err)
+				return fmt.Errorf("format conversion error. [%s]", tag)
 			}
 			fieldValue.FieldByName(field.Name).SetFloat(f)
 		default:
